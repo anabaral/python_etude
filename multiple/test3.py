@@ -1,4 +1,5 @@
 # NEED: pip install requests
+# NEED: pip install celery
 #
 import requests
 from celery import Celery
@@ -22,7 +23,5 @@ for i in range(1, 10):
         'http://localhost:9080/{}'.format(i), i
     ))
 
-do_chain_tasks = chord(tasks)
-result = do_chain_tasks(merge_text.s())
-
-print (result)
+do_chain_tasks = chord(tasks)(merge_text).get()
+print(do_chain_tasks)
