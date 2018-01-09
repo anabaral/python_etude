@@ -1,21 +1,12 @@
 from celery import Celery
-from celery import chord
-from celery import signature
 
-app = Celery(__name__)
+# test4 는 파일명이자 app 이름
+# 브로커를 RabbitMQ로 사용한다고 가정. 실제 실행하면 localhost:5672 에 접속하려고 애씀.
+app = Celery('test4', broker='pyamqp://guest@localhost//')
+
+# 다음 명령으로 실행.
+# celery -A test4 worker --loglevel=info
 
 @app.task
-def add(x, y):
-    return x + y
-
-@app.task
-def tsum(numbers):
-    return sum(numbers)
-
-result = add(2,2)
-print(result)
-
-result = signature('tasks.add', args=(2, 2), countdown=10)
-print(result())
-
-print(add.s(2,2))
+def add(x,y):
+    return x+y
