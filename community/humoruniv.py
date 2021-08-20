@@ -149,12 +149,11 @@ class MyApp(QWidget):
       try:
         img_url = get_url(pic_img_elt['src'])
       except KeyError:
-        import os
-        #print("no src attr??" + str(pic_img_elt))
+        print("no src attr??" + str(pic_img_elt))
       #print(img_url)
       pic_img_urls.append(img_url)
     
-    webp_exists=False
+    #webp_exists=False
     cnt=1
     md5sums=[]
     for each_img_url in pic_img_urls:
@@ -162,8 +161,8 @@ class MyApp(QWidget):
         continue
       from os import path
       each_img_ext = path.splitext(each_img_url)[1]
-      if each_img_ext == '.webp':
-        webp_exists=True
+      #if each_img_ext == '.webp':
+      #  webp_exists=True
       to_filename = base_dir() + ("%2.2d"% cnt) + each_img_ext
       #urlretrieve(each_img_url, filename= to_filename )
       headers = {'Referer': 'http://web.humoruniv.com/', 
@@ -189,8 +188,8 @@ class MyApp(QWidget):
           f.close()
         md5sums.append(hash)
         cnt = cnt + 1
-        # check cropsize
-        if not to_filename.endswith('.gif'):
+        # check cropsize and webp
+        if each_img_ext != '.gif':
           encoded_img = np.frombuffer(data, dtype = np.uint8)
           img_org = cv2.imdecode(encoded_img, cv2.IMREAD_COLOR)
           height, width, channel = img_org.shape
@@ -199,15 +198,19 @@ class MyApp(QWidget):
           elif width > 800 and height >= 8192:
             logs.append('pic will be cropped...')
             self.crop_img(to_filename, img_src = img_org, cropsize = 8192)
+          elif each_img_ext == '.webp':
+            # webp는 jpg로 변환해서 저장
+            cv2.imwrite(to_filename + '.jpg', img_org)
+            os.system(f"del {to_filename}")
           data = None
           encoded_img = None
           img_org = None
         
     self.textbox_log.setText('\n'.join(logs))
-    if webp_exists:
-      import os
-      print('webp2jpg.bat')
-      os.system('webp2jpg.bat')
+    #if webp_exists:
+    #  import os
+    #  print('webp2jpg.bat')
+    #  os.system('webp2jpg.bat')
 
   def get_title(self):
     pyperclip.copy(self.title)
@@ -231,8 +234,6 @@ class MyApp(QWidget):
     self.textbox_log.append("\n deleted temp pics")
   
   def crop_img(self, filename, img_src, cropsize = 8192):
-    import cv2
-    import re
     print(f'cropping {filename} ...')
     file_ext= re.search('[.](jpg|png|jpeg)$', filename).group(0)
     if img_src is None:
