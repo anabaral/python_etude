@@ -43,7 +43,7 @@ class MyApp(QWidget):
 
   def initUI(self):
     self.setWindowTitle("웃대펌")
-  
+
     hbox1 = QHBoxLayout()
     self.loc = QLineEdit(current_loc)
     self.loc.setReadOnly(True)
@@ -138,7 +138,8 @@ class MyApp(QWidget):
     print(self.ref)
 
     self.btn_ref.setText(f"{self.ref}")
-    
+    self.adjustSize()
+
     logs = []
     pic_img_urls = []
     pic_img_elts = bs.select('div#cnts div.simple_attach_img_div img')
@@ -192,25 +193,22 @@ class MyApp(QWidget):
         if each_img_ext != '.gif':
           encoded_img = np.frombuffer(data, dtype = np.uint8)
           img_org = cv2.imdecode(encoded_img, cv2.IMREAD_COLOR)
-          height, width, channel = img_org.shape
-          if width >= 8192 :
-            logs.append(f'width >= 8192 need to be manually processed')
-          elif width > 800 and height >= 8192:
-            logs.append('pic will be cropped...')
-            self.crop_img(to_filename, img_src = img_org, cropsize = 8192)
-          elif each_img_ext == '.webp':
-            # webp는 jpg로 변환해서 저장
-            cv2.imwrite(to_filename + '.jpg', img_org)
-            os.system(f"del {to_filename}")
+          if img_org is not None:   # 해석 안되는 형식인 경우가 있더라 (webp 움짤)
+            height, width, channel = img_org.shape
+            if width >= 8192 :
+              logs.append(f'width >= 8192 need to be manually processed')
+            elif width > 800 and height >= 8192:
+              logs.append('pic will be cropped...')
+              self.crop_img(to_filename, img_src = img_org, cropsize = 8192)
+            elif each_img_ext == '.webp':
+              # webp는 jpg로 변환해서 저장
+              cv2.imwrite(to_filename + '.jpg', img_org)
+              os.system(f"del {to_filename}")
           data = None
           encoded_img = None
           img_org = None
         
     self.textbox_log.setText('\n'.join(logs))
-    #if webp_exists:
-    #  import os
-    #  print('webp2jpg.bat')
-    #  os.system('webp2jpg.bat')
 
   def get_title(self):
     pyperclip.copy(self.title)
