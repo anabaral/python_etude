@@ -1,4 +1,4 @@
-# pip install beautifulsoup4 validators pyperclip opencv-python pillow numpy 
+# pip install PyQt5 beautifulsoup4 validators pyperclip opencv-python pillow numpy 
 #
 import re, sys, os
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QLineEdit, QTextEdit, QFileDialog
