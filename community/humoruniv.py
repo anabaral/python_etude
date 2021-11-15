@@ -14,6 +14,7 @@ from PIL import ImageGrab
 import cv2
 import numpy as np
 from http.client import InvalidURL
+from urllib.error import HTTPError
 
 current_loc = os.getcwd()
 
@@ -74,12 +75,17 @@ class MyApp(QWidget):
     self.btn_ref.setStyleSheet("background-color: #cc9")
     vbox.addWidget(self.btn_ref)
     
-    self.btn_clip_png125 = QPushButton('Clip to 00.png(125%)')
+    self.label_clip = QLabel('Clip to 00.png', self)
+    self.btn_clip_png150 = QPushButton('150%')
+    self.btn_clip_png150.clicked.connect(lambda: self.copy_to_00png(1.5))
+    self.btn_clip_png125 = QPushButton('125%')
     self.btn_clip_png125.clicked.connect(lambda: self.copy_to_00png(1.25))
-    self.btn_clip_png100 = QPushButton('Clip to 00.png(100%)')
+    self.btn_clip_png100 = QPushButton('100%')
     self.btn_clip_png100.clicked.connect(lambda: self.copy_to_00png(1.0))
     
     hbox2 = QHBoxLayout()
+    hbox2.addWidget(self.label_clip)
+    hbox2.addWidget(self.btn_clip_png150)
     hbox2.addWidget(self.btn_clip_png125)
     hbox2.addWidget(self.btn_clip_png100)
     vbox.addLayout(hbox2)
@@ -144,10 +150,11 @@ class MyApp(QWidget):
 
     logs = []
     pic_img_urls = []
-    pic_img_elts = bs.select('div#cnts div.simple_attach_img_div img')
-    pic_img_elts.extend(bs.select('div#cnts table div.comment_img_div img'))
-    pic_img_elts.extend(bs.select('div#cnts div.body_editor img'))
-    pic_img_elts.extend(bs.select('div#cnts div#wrap_img img'))
+    pic_img_elts = bs.select('div#cnts div.simple_attach_img_div img , div#cnts table div.comment_img_div img, div#cnts div.body_editor img, div#cnts div#wrap_img img')
+    #pic_img_elts = bs.select('div#cnts div.simple_attach_img_div img')
+    #pic_img_elts.extend(bs.select('div#cnts table div.comment_img_div img'))
+    #pic_img_elts.extend(bs.select('div#cnts div.body_editor img'))
+    #pic_img_elts.extend(bs.select('div#cnts div#wrap_img img'))
     for pic_img_elt in pic_img_elts:
       try:
         img_url = get_url(pic_img_elt['src'])
@@ -177,6 +184,9 @@ class MyApp(QWidget):
       except InvalidURL as e:
         logs.append("failed to retrieve invalid url : " + each_img_url)
         continue
+      except HTTPError as e:
+        logs.append("failed to retrieve http error : " + e.reason + " : " + each_img_url)
+        continue
       hash = hashlib.md5(data).hexdigest()
       if hash in md5sums:
         msg = 'image duplicate found.'
@@ -196,21 +206,25 @@ class MyApp(QWidget):
           encoded_img = np.frombuffer(data, dtype = np.uint8)
           img_org = cv2.imdecode(encoded_img, cv2.IMREAD_COLOR)
           if img_org is not None:   # 해석 안되는 형식인 경우가 있더라 (webp 움짤)
+            if each_img_ext == '.webp':
+              cv2.imwrite(to_filename + '.jpg', img_org)
+              os.system(f"del {to_filename}")
+              to_filename = to_filename + '.jpg'
             height, width, channel = img_org.shape
             if width >= 8192 :
               logs.append(f'width >= 8192 need to be manually processed')
             elif width > 800 and height >= 8192:
               logs.append('pic will be cropped...')
               self.crop_img(to_filename, img_src = img_org, cropsize = 8192)
-            elif each_img_ext == '.webp':
-              # webp는 jpg로 변환해서 저장
-              cv2.imwrite(to_filename + '.jpg', img_org)
-              os.system(f"del {to_filename}")
           data = None
           encoded_img = None
           img_org = None
         
     self.textbox_log.setText('\n'.join(logs))
+    #if webp_exists:
+    #  import os
+    #  print('webp2jpg.bat')
+    #  os.system('webp2jpg.bat')
 
   def get_title(self):
     pyperclip.copy(self.title)
@@ -229,7 +243,7 @@ class MyApp(QWidget):
   def del_temp_pics(self):
     files = os.listdir(base_dir())
     for file in files:
-      if re.match('^[0-9][0-9][-_]?(\.webp)?[-_]?[0-9]*\.(jpg|gif|jfif|png|mp4)$', file):
+      if re.match('^[0-9][0-9][-_]?(\.webp)?[-_]?[0-9]*\.(jpg|gif|jfif|jpeg|png|mp4)$', file):
         os.system(f"del {file}")
     self.textbox_log.append("\n deleted temp pics")
   
