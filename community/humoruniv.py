@@ -117,7 +117,7 @@ class MyApp(QWidget):
     req = Request(url=base_url,  headers=common_headers)
     
     res = urlopen(req)
-    html = res.read().decode('cp949')
+    html = res.read().decode(encoding='cp949', errors='ignore')
     
     bs = BeautifulSoup(html, 'html.parser')
     #print(html)
