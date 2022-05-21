@@ -1,7 +1,7 @@
 # pip install PyQt5 beautifulsoup4 validators pyperclip opencv-python pillow numpy 
 #
-import re, sys, os
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QLineEdit, QTextEdit, QFileDialog
+import re, sys, os, gc
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QLineEdit, QTextEdit, QFileDialog, QCheckBox
 from PyQt5.QtCore import Qt
 from urllib.request import Request, urlopen, urlretrieve
 from bs4 import BeautifulSoup
@@ -75,6 +75,8 @@ class MyApp(QWidget):
     self.btn_ref.setStyleSheet("background-color: #cc9")
     vbox.addWidget(self.btn_ref)
     
+    self.overwrite_chk = QCheckBox('overwrite')
+    self.overwrite_chk.toggle() # set checked
     self.label_clip = QLabel('Clip to 00.png', self)
     self.btn_clip_png150 = QPushButton('150%')
     self.btn_clip_png150.clicked.connect(lambda: self.copy_to_00png(1.5))
@@ -85,6 +87,7 @@ class MyApp(QWidget):
     
     hbox2 = QHBoxLayout()
     hbox2.addWidget(self.label_clip)
+    hbox2.addWidget(self.overwrite_chk)
     hbox2.addWidget(self.btn_clip_png150)
     hbox2.addWidget(self.btn_clip_png125)
     hbox2.addWidget(self.btn_clip_png100)
@@ -113,6 +116,9 @@ class MyApp(QWidget):
     if not validators.url(base_url):
       self.btn_title.setText('뭔가 잘못 카피한 거 아님?')
       return
+
+    if base_url.startswith('http://m.humoruniv'):
+        base_url = base_url.replace('http://m.humoruniv', 'http://web.humoruniv')
 
     req = Request(url=base_url,  headers=common_headers)
     
@@ -207,8 +213,12 @@ class MyApp(QWidget):
           img_org = cv2.imdecode(encoded_img, cv2.IMREAD_COLOR)
           if img_org is not None:   # 해석 안되는 형식인 경우가 있더라 (webp 움짤)
             if each_img_ext == '.webp':
-              cv2.imwrite(to_filename + '.jpg', img_org)
-              os.system(f"del {to_filename}")
+              print(to_filename + '.jpg')
+              #cv2.imwrite(to_filename + '.jpg', img_org)   # 한글경로 못쓴다네
+              result, image_buf = cv2.imencode('.jpg', img_org)
+              with open(to_filename + '.jpg', mode='w+b') as f:
+                image_buf.tofile(f)
+              os.system(f'del "{to_filename}"')
               to_filename = to_filename + '.jpg'
             height, width, channel = img_org.shape
             if width >= 8192 :
@@ -216,9 +226,9 @@ class MyApp(QWidget):
             elif width > 800 and height >= 8192:
               logs.append('pic will be cropped...')
               self.crop_img(to_filename, img_src = img_org, cropsize = 8192)
-          data = None
           encoded_img = None
           img_org = None
+        data = None
         
     self.textbox_log.setText('\n'.join(logs))
     #if webp_exists:
@@ -237,30 +247,62 @@ class MyApp(QWidget):
     if im is None:
       self.btn_title.setText('뭔가 잘못 카피한 거 아님?')
       return
-    im.resize((round(im.width * scale) , round(im.height * scale) )).save(base_dir() + '00.png')
-    self.textbox_log.append("\n saved to 00.png")
+    if self.overwrite_chk.isChecked():
+      save_filename = '00.png'
+    else:
+      idx = 0
+      while True:
+        save_filename = '00-' + str(idx) + '.png'
+        if not os.path.exists(base_dir() + save_filename):
+          break
+        else:
+          idx = idx + 1
+    im.resize((round(im.width * scale) , round(im.height * scale) )).save(base_dir() + save_filename)
+    del im
+    im = None
+    #gc.Collect()
+    self.textbox_log.append("saved to " + save_filename)
 
   def del_temp_pics(self):
     files = os.listdir(base_dir())
     for file in files:
-      if re.match('^[0-9][0-9][-_]?(\.webp)?[-_]?[0-9]*\.(jpg|gif|jfif|jpeg|png|mp4)$', file):
+      if re.match('^[0-9][0-9][-_]?(\.webp)?[-_]?[0-9]*\.(jpg|JPG|gif|GIF|jfif|jpeg|png|PNG|mp4)$', file):
         os.system(f"del {file}")
     self.textbox_log.append("\n deleted temp pics")
   
-  def crop_img(self, filename, img_src, cropsize = 8192):
+  def crop_img(self, filename, img_src, cropsize = 8192, default_search_size = 800):
     print(f'cropping {filename} ...')
     file_ext= re.search('[.](jpg|png|jpeg)$', filename).group(0)
     if img_src is None:
-      img_src=cv2.imread("01.jpg", cv2.IMREAD_COLOR)
+      img_src=cv2.imread(filename, cv2.IMREAD_COLOR)
     height, width, channel = img_src.shape
     y=0
     i=0
     while y < height:
-      next = min(height, y + cropsize)
-      dst= img_src[y:next, 0:width]
+      next_cand = min(height, y + cropsize)
+      if next_cand < height:
+        # 흰색으로 가로지르는 영역이 있을만한 곳을 찾음
+        found = -1 
+        for finding_y in range(next_cand - 1, next_cand - default_search_size, -1): # default_search_size 범위로 찾음
+          flag = 0
+          for finding_x in range(0,width):
+            [r,g,b] = img_src[finding_y,finding_x]
+            if r < 250 or g < 250 or b < 250:  # 흰색의 정의 : RGB 모두 250 이상
+              flag = 1  # 흰색아님
+              break
+          if flag == 0: # 흰색으로 가로지르는 y좌표 발견
+            found = finding_y
+            break
+        if found > -1:
+          next_cand = found
+      print(next_cand)
+      dst= img_src[y:next_cand, 0:width]
       dst_filename = re.sub(file_ext + '$', '-' + str(i) + file_ext, filename)
-      cv2.imwrite(dst_filename, dst)
-      y = next
+      #cv2.imwrite(dst_filename, dst)
+      result, image_buf = cv2.imencode(file_ext, dst)
+      with open(dst_filename, mode='w+b') as f:
+        image_buf.tofile(f)
+      y = next_cand
       i = i + 1
       self.textbox_log.append(f'\n saved {dst_filename}')
 
