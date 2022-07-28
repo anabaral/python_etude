@@ -4,6 +4,7 @@ import re, sys, os, gc
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QLineEdit, QTextEdit, QFileDialog, QCheckBox
 from PyQt5.QtCore import Qt
 from urllib.request import Request, urlopen, urlretrieve
+from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 import validators
 
@@ -161,6 +162,11 @@ class MyApp(QWidget):
     #pic_img_elts.extend(bs.select('div#cnts table div.comment_img_div img'))
     #pic_img_elts.extend(bs.select('div#cnts div.body_editor img'))
     #pic_img_elts.extend(bs.select('div#cnts div#wrap_img img'))
+    
+    ## 2022-07 쯤부터 보이는 패턴 추가
+    for ext_img in bs.select("#wrap_body p span#ai_cm_content p a img"):
+        pic_img_urls.append(ext_img['src'])
+
     for pic_img_elt in pic_img_elts:
       try:
         img_url = get_url(pic_img_elt['src'])
@@ -177,11 +183,19 @@ class MyApp(QWidget):
         continue
       from os import path
       each_img_ext = path.splitext(each_img_url)[1]
+      if '?' in each_img_ext:  # url 에 ? 이 있는 경우 
+          each_img_ext = each_img_ext.split('?')[0]
       #if each_img_ext == '.webp':
       #  webp_exists=True
       to_filename = base_dir() + ("%2.2d"% cnt) + each_img_ext
+      parsed_each_img_url = urlparse(each_img_url)
+      if 'humoruniv.com' in parsed_each_img_url.netloc:
+        referer = 'http://web.humoruniv.com/'
+      else:
+        referer = f"{parsed_each_img_url.scheme}://{parsed_each_img_url.netloc}/"
       #urlretrieve(each_img_url, filename= to_filename )
-      headers = {'Referer': 'http://web.humoruniv.com/', 
+      print(f"Referer: {referer}")
+      headers = {'Referer': referer, 
                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)'
                + ' Chrome/91.0.4472.114 Safari/537.36'}
       req = Request(each_img_url, b'{}', headers, method="GET")
@@ -192,6 +206,9 @@ class MyApp(QWidget):
         continue
       except HTTPError as e:
         logs.append("failed to retrieve http error : " + e.reason + " : " + each_img_url)
+        continue
+      except ConnectionResetError as e:
+        logs.append("failed to connection reset : " + each_img_url)
         continue
       hash = hashlib.md5(data).hexdigest()
       if hash in md5sums:
