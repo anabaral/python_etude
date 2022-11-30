@@ -1,6 +1,6 @@
 # pip install PyQt5 beautifulsoup4 validators pyperclip opencv-python pillow numpy 
 #
-import re, sys, os, gc
+import re, sys, os, gc, time
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QLineEdit, QTextEdit, QFileDialog, QCheckBox
 from PyQt5.QtCore import Qt
 from urllib.request import Request, urlopen, urlretrieve
@@ -16,8 +16,11 @@ import cv2
 import numpy as np
 from http.client import InvalidURL
 from urllib.error import HTTPError
+from concurrent.futures import ThreadPoolExecutor
 
 current_loc = os.getcwd()
+
+executor = ThreadPoolExecutor(max_workers=5)
 
 def base_dir():
   return current_loc + "\\"
@@ -60,9 +63,9 @@ class MyApp(QWidget):
     vbox = QVBoxLayout()
     vbox.addLayout(hbox1)
 
-    btn_apply = QPushButton('Apply URL')
-    btn_apply.clicked.connect(self.apply_url)
-    vbox.addWidget(btn_apply)
+    self.btn_apply = QPushButton('Apply URL')
+    self.btn_apply.clicked.connect(self.apply_url)
+    vbox.addWidget(self.btn_apply)
 
     self.btn_title = QPushButton()
     self.btn_title.setText('title')
@@ -77,7 +80,7 @@ class MyApp(QWidget):
     vbox.addWidget(self.btn_ref)
     
     self.overwrite_chk = QCheckBox('overwrite')
-    self.overwrite_chk.toggle() # set checked
+    #self.overwrite_chk.toggle() # set checked
     self.label_clip = QLabel('Clip to 00.png', self)
     self.btn_clip_png150 = QPushButton('150%')
     self.btn_clip_png150.clicked.connect(lambda: self.copy_to_00png(1.5))
@@ -111,12 +114,18 @@ class MyApp(QWidget):
     self.loc.setText(current_loc)
 
   def apply_url(self):
+    executor.submit(self.apply_url_inner())
+  
+  
+  def apply_url_inner(self):
     common_headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36"}
     base_url = pyperclip.paste().strip()
     print("<<" + base_url + ">>")
     if not validators.url(base_url):
-      self.btn_title.setText('뭔가 잘못 카피한 거 아님?')
+      self.btn_apply.setText('URL이 좀 이상함. 카피한 거 확인해봐요?')
       return
+    else:
+      self.btn_apply.setText('Apply URL')
 
     if base_url.startswith('http://m.humoruniv'):
         base_url = base_url.replace('http://m.humoruniv', 'http://web.humoruniv')
@@ -158,10 +167,7 @@ class MyApp(QWidget):
     logs = []
     pic_img_urls = []
     pic_img_elts = bs.select('div#cnts div.simple_attach_img_div img , div#cnts table div.comment_img_div img, div#cnts div.body_editor img, div#cnts div#wrap_img img')
-    #pic_img_elts = bs.select('div#cnts div.simple_attach_img_div img')
-    #pic_img_elts.extend(bs.select('div#cnts table div.comment_img_div img'))
-    #pic_img_elts.extend(bs.select('div#cnts div.body_editor img'))
-    #pic_img_elts.extend(bs.select('div#cnts div#wrap_img img'))
+
     
     ## 2022-07 쯤부터 보이는 패턴 추가
     for ext_img in bs.select("#wrap_body p span#ai_cm_content p a img"):
@@ -189,10 +195,13 @@ class MyApp(QWidget):
       #  webp_exists=True
       to_filename = base_dir() + ("%2.2d"% cnt) + each_img_ext
       parsed_each_img_url = urlparse(each_img_url)
-      if 'humoruniv.com' in parsed_each_img_url.netloc:
+      if not parsed_each_img_url.netloc :
+        print("weird url form??")
+        continue
+      elif 'humoruniv.com' in parsed_each_img_url.netloc:
         referer = 'http://web.humoruniv.com/'
       else:
-        referer = f"{parsed_each_img_url.scheme}://{parsed_each_img_url.netloc}/"
+        referer = f"{parsed_each_img_url} ----> {parsed_each_img_url.scheme}://{parsed_each_img_url.netloc}/"
       #urlretrieve(each_img_url, filename= to_filename )
       print(f"Referer: {referer}")
       headers = {'Referer': referer, 
@@ -274,7 +283,8 @@ class MyApp(QWidget):
           break
         else:
           idx = idx + 1
-    im.resize((round(im.width * scale) , round(im.height * scale) )).save(base_dir() + save_filename)
+    im = im.resize((round(im.width * scale) , round(im.height * scale) )) if scale != 1.0 else im
+    im.save(base_dir() + save_filename)
     del im
     im = None
     #gc.Collect()
