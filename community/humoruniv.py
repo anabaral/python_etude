@@ -110,6 +110,7 @@ class MyApp(QWidget):
 
   def change_loc(self):
     dialog = QFileDialog()
+    global current_loc
     current_loc = dialog.getExistingDirectory(None, "Select Folder")
     self.loc.setText(current_loc)
 
@@ -122,7 +123,7 @@ class MyApp(QWidget):
     base_url = pyperclip.paste().strip()
     print("<<" + base_url + ">>")
     if not validators.url(base_url):
-      self.btn_apply.setText('URL이 좀 이상함. 카피한 거 확인해봐요?')
+      self.btn_apply.setText('Apply URL: URL이 좀 이상함. 카피한 거 확인해봐요?')
       return
     else:
       self.btn_apply.setText('Apply URL')
@@ -131,15 +132,19 @@ class MyApp(QWidget):
         base_url = base_url.replace('http://m.humoruniv', 'http://web.humoruniv')
 
     req = Request(url=base_url,  headers=common_headers)
+    try:
+      res = urlopen(req)
+    except urllib.error.URLError:
+      self.btn_apply.setText(f"Apply URL: 받아오는데 실패했습니다. 원인불명...")
+      return
     
-    res = urlopen(req)
     html = res.read().decode(encoding='cp949', errors='ignore')
     
     bs = BeautifulSoup(html, 'html.parser')
     #print(html)
     # body가 빌 경우가 있네? 대기자료-->웃자 로 넘어가면
     if len(bs.select('body div')) < 1:
-      self.btn_title.setText('body 내용이 없네요, 대기자료가 웃자로 넘어갔나?')
+      self.btn_apply.setText('Apply URL: body 내용이 없네요, 대기자료가 웃자로 넘어갔나?')
       return
     
     #title_elt = bs.select('title')[0]
@@ -176,10 +181,15 @@ class MyApp(QWidget):
     for pic_img_elt in pic_img_elts:
       try:
         img_url = get_url(pic_img_elt['src'])
+        if not img_url:  # test
+          print("... not a valid url?")
+          continue
+        if 'filecache' in img_url:   # <img src="http://filecache.humoruniv.com..." OnError="...">
+          img_url = re.search("'http://[^']+'", pic_img_elt['onerror']).group(0).strip("'")
+        #print(img_url)
+        pic_img_urls.append(img_url)
       except KeyError:
         print("no src attr??" + str(pic_img_elt))
-      #print(img_url)
-      pic_img_urls.append(img_url)
     
     #webp_exists=False
     cnt=1
@@ -207,17 +217,21 @@ class MyApp(QWidget):
       headers = {'Referer': referer, 
                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)'
                + ' Chrome/91.0.4472.114 Safari/537.36'}
+      print(f"image url = {each_img_url}")
       req = Request(each_img_url, b'{}', headers, method="GET")
       try:
-        data = urlopen(req).read()
+        data = urlopen(req, timeout=5).read()
       except InvalidURL as e:
-        logs.append("failed to retrieve invalid url : " + each_img_url)
+        logs.append("failed to retrieve with invalid url : " + each_img_url)
         continue
       except HTTPError as e:
-        logs.append("failed to retrieve http error : " + e.reason + " : " + each_img_url)
+        logs.append("failed to retrieve with http error : " + e.reason + " : " + each_img_url)
         continue
       except ConnectionResetError as e:
-        logs.append("failed to connection reset : " + each_img_url)
+        logs.append("failed to retrive with connection reset : " + each_img_url)
+        continue
+      except Exception as e:
+        logs.append(' '.join(["failed to retrive with Unknown Exception : ", str(e.reason), " : ", each_img_url]) )
         continue
       hash = hashlib.md5(data).hexdigest()
       if hash in md5sums:
@@ -244,14 +258,15 @@ class MyApp(QWidget):
               result, image_buf = cv2.imencode('.jpg', img_org)
               with open(to_filename + '.jpg', mode='w+b') as f:
                 image_buf.tofile(f)
-              os.system(f'del "{to_filename}"')
+              #os.system(f'del "{to_filename}"')
+              os.remove(os.path.join(base_dir(), to_filename))
               to_filename = to_filename + '.jpg'
             height, width, channel = img_org.shape
             if width >= 8192 :
               logs.append(f'width >= 8192 need to be manually processed')
-            elif width > 800 and height >= 8192:
+            elif width > 800 and height >= 16384:
               logs.append('pic will be cropped...')
-              self.crop_img(to_filename, img_src = img_org, cropsize = 8192)
+              self.crop_img(to_filename, img_src = img_org, cropsize = 16384)
           encoded_img = None
           img_org = None
         data = None
@@ -271,7 +286,7 @@ class MyApp(QWidget):
   def copy_to_00png(self, scale):
     im = ImageGrab.grabclipboard()
     if im is None:
-      self.btn_title.setText('뭔가 잘못 카피한 거 아님?')
+      self.btn_apply.setText('Apply URL: 뭔가 잘못 카피한 거 아님?')
       return
     if self.overwrite_chk.isChecked():
       save_filename = '00.png'
@@ -294,10 +309,11 @@ class MyApp(QWidget):
     files = os.listdir(base_dir())
     for file in files:
       if re.match('^[0-9][0-9][-_]?(\.webp)?[-_]?[0-9]*\.(jpg|JPG|gif|GIF|jfif|jpeg|png|PNG|mp4)$', file):
-        os.system(f"del {file}")
+        #os.system(f"del {file}")
+        os.remove(os.path.join(base_dir(), file))
     self.textbox_log.append("\n deleted temp pics")
   
-  def crop_img(self, filename, img_src, cropsize = 8192, default_search_size = 800):
+  def crop_img(self, filename, img_src, cropsize = 16384, default_search_size = 1500):
     print(f'cropping {filename} ...')
     file_ext= re.search('[.](jpg|png|jpeg)$', filename).group(0)
     if img_src is None:
