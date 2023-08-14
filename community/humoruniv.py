@@ -17,6 +17,7 @@ import numpy as np
 from http.client import InvalidURL
 from urllib.error import HTTPError
 from concurrent.futures import ThreadPoolExecutor
+from http.client import IncompleteRead
 
 current_loc = os.getcwd()
 
@@ -29,9 +30,30 @@ def base_dir():
 # pip install pyqt5
 
 
-def get_url(given_url):
+def get_url(given_url, elt=None):
   if not given_url.startswith("http") :
-    return None
+    if "//filecache" in given_url and elt is not None:
+      # <img src="http://filecache.humoruniv.com..." OnError="...">
+      # print(f"filecached] elt={elt}")
+      onerror = re.search("'https?://[^']+'", elt['onerror'])
+      print(f"\n\n\nonerror={onerror}")
+      if not onerror:
+        onerror = re.search("'//down.humoruniv.com[^']+'", elt['onerror'])
+      if not onerror:
+        return None
+      print(f"filecached] onerror= {onerror.group(0)}")
+      url = "http:" + onerror.group(0).strip("'").lstrip("http:").lstrip("https:")
+      # print(f"filecached] url from onerror = {url}")
+      return url
+    elif "//timg.humoruniv.com/thumb_crop_resize.php?" in given_url:
+      if "thumb_crop_resize.php?url_enc=" in given_url:
+        return None
+      url = given_url.split("thumb_crop_resize.php?url=")[1].split("?")[0]
+      return url
+    elif "//down.humoruniv.com/" in given_url:
+      return "http:" + given_url
+    else:
+      return None
   if "thumb_crop_resize.php?" in given_url:
     if "thumb_crop_resize.php?url_enc=" in given_url:
       return None
@@ -140,8 +162,9 @@ class MyApp(QWidget):
     
     html = res.read().decode(encoding='cp949', errors='ignore')
     
+    
     bs = BeautifulSoup(html, 'html.parser')
-    #print(html)
+    #print(f"\n\n\n\n\n{html[5000:8000]}\n\n")
     # body가 빌 경우가 있네? 대기자료-->웃자 로 넘어가면
     if len(bs.select('body div')) < 1:
       self.btn_apply.setText('Apply URL: body 내용이 없네요, 대기자료가 웃자로 넘어갔나?')
@@ -159,7 +182,10 @@ class MyApp(QWidget):
     if len(short_url_elt) > 0:
       refs.append(short_url_elt[0]['value'])
     
-    ref_elts = bs.select('div#wrap_cbay_new table a')
+    #ref_elts = bs.select('div#wrap_cbay_new table a')
+    print(bs.select('div#cnts')[0].find_next_sibling("div"))
+    ref_elts = bs.select('div#cnts')[0].find_next_sibling("div").select("div span a")
+    print(f"ref_elts  = {ref_elts}")
     for ref_elt in ref_elts:
       if ref_elt.text:
         refs.append(ref_elt.text)
@@ -171,25 +197,32 @@ class MyApp(QWidget):
 
     logs = []
     pic_img_urls = []
-    pic_img_elts = bs.select('div#cnts div.simple_attach_img_div img , div#cnts table div.comment_img_div img, div#cnts div.body_editor img, div#cnts div#wrap_img img')
-
+    pic_img_elts = bs.select('#wrap_copy div.simple_attach_img_div img , #wrap_copy table div.comment_img_div img, #wrap_copy div.body_editor img, #wrap_copy div#wrap_img img')
+    #pic_img_elts = bs.select('div#wrap_copy img')
+    print(f"1: {pic_img_elts}")
+    print(f"2: {bs.select('div.simple_attach_img_div')}")
+    
     
     ## 2022-07 쯤부터 보이는 패턴 추가
     for ext_img in bs.select("#wrap_body p span#ai_cm_content p a img"):
-        pic_img_urls.append(ext_img['src'])
+        pic_img_urls.append(get_url(ext_img['src']))
 
     for pic_img_elt in pic_img_elts:
       try:
-        img_url = get_url(pic_img_elt['src'])
+        print(f"img src candidate = {pic_img_elt['src']}")
+        img_url = get_url(pic_img_elt['src'], pic_img_elt)
+        print(f"1) img_url = {img_url}")
         if not img_url:  # test
           print("... not a valid url?")
           continue
         if 'filecache' in img_url:   # <img src="http://filecache.humoruniv.com..." OnError="...">
           img_url = re.search("'http://[^']+'", pic_img_elt['onerror']).group(0).strip("'")
-        #print(img_url)
+        print(f"2) img_url = {img_url}")
         pic_img_urls.append(img_url)
       except KeyError:
         print("no src attr??" + str(pic_img_elt))
+    print(f"pic pic_img_elts = {pic_img_elts}")
+    print(f"pic_img_urls = {pic_img_urls}")
     
     #webp_exists=False
     cnt=1
@@ -229,6 +262,9 @@ class MyApp(QWidget):
         continue
       except ConnectionResetError as e:
         logs.append("failed to retrive with connection reset : " + each_img_url)
+        continue
+      except IncompleteRead as e:
+        logs.append("IncompleteRead : " +each_img_url)
         continue
       except Exception as e:
         logs.append(' '.join(["failed to retrive with Unknown Exception : ", str(e.reason), " : ", each_img_url]) )
