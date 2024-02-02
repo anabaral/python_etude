@@ -1,7 +1,7 @@
 # pip install PyQt5 beautifulsoup4 validators pyperclip opencv-python pillow numpy 
 #
 import re, sys, os, gc, time
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QLineEdit, QTextEdit, QFileDialog, QCheckBox
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QGridLayout, QLineEdit, QTextEdit, QFileDialog, QCheckBox
 from PyQt5.QtCore import Qt
 from urllib.request import Request, urlopen, urlretrieve
 from urllib.parse import urlparse
@@ -90,16 +90,23 @@ class MyApp(QWidget):
     vbox.addWidget(self.btn_apply)
 
     self.btn_title = QPushButton()
-    self.btn_title.setText('title')
+    self.btn_title.setText('+title')
     self.btn_title.clicked.connect(self.get_title)
     self.btn_title.setStyleSheet("background-color: #cc9")
     vbox.addWidget(self.btn_title)
     
+    hbox_ref = QGridLayout()
+    self.btn_copy_video_attr = QPushButton('+video attr')
+    self.btn_copy_video_attr.clicked.connect(lambda: self.copy_video_attr())
+    self.btn_copy_video_attr.setStyleSheet("background-color: #cc9")
+    self.btn_copy_video_attr.setMaximumWidth(200)
+    hbox_ref.addWidget(self.btn_copy_video_attr, 0, 0)
     self.btn_ref = QPushButton()
-    self.btn_ref.setText('ref')
+    self.btn_ref.setText('+ref')
     self.btn_ref.clicked.connect(self.get_ref)
     self.btn_ref.setStyleSheet("background-color: #cc9")
-    vbox.addWidget(self.btn_ref)
+    hbox_ref.addWidget(self.btn_ref, 0, 1, 1, 3)
+    vbox.addLayout(hbox_ref)
     
     self.overwrite_chk = QCheckBox('overwrite')
     #self.overwrite_chk.toggle() # set checked
@@ -144,14 +151,25 @@ class MyApp(QWidget):
     common_headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36"}
     base_url = pyperclip.paste().strip()
     print("<<" + base_url + ">>")
+    site_name=None
+    if "humoruniv" in base_url:
+        site_name="humoruniv"
+    elif "ggeal" in base_url:
+        site_name="ggeal"
+    
     if not validators.url(base_url):
       self.btn_apply.setText('Apply URL: URL이 좀 이상함. 카피한 거 확인해봐요?')
+      return
+    elif site_name is None:
+      self.btn_apply.setText('Apply URL: 웃대나 깨알 URL이 아닌것 같아요?')
       return
     else:
       self.btn_apply.setText('Apply URL')
 
-    if base_url.startswith('http://m.humoruniv'):
-        base_url = base_url.replace('http://m.humoruniv', 'http://web.humoruniv')
+    if base_url.startswith('http://m.humoruniv') or base_url.startswith('https://m.humoruniv'):
+        base_url = base_url.replace('//m.humoruniv', '//web.humoruniv')
+    if base_url.startswith('https://m.ggeal.com'):
+        base_url = base_url.replace('https://m.ggeal.com', 'https://www.ggeal.com')
 
     req = Request(url=base_url,  headers=common_headers)
     try:
@@ -160,7 +178,11 @@ class MyApp(QWidget):
       self.btn_apply.setText(f"Apply URL: 받아오는데 실패했습니다. 원인불명...")
       return
     
-    html = res.read().decode(encoding='cp949', errors='ignore')
+    if site_name == "humoruniv":
+        page_encoding = "cp949"
+    else: # ggeal
+        page_encoding = "utf-8"
+    html = res.read().decode(encoding=page_encoding, errors='ignore')
     
     
     bs = BeautifulSoup(html, 'html.parser')
@@ -170,43 +192,68 @@ class MyApp(QWidget):
       self.btn_apply.setText('Apply URL: body 내용이 없네요, 대기자료가 웃자로 넘어갔나?')
       return
     
-    #title_elt = bs.select('title')[0]
-    #title = re.sub(pattern=' ?:: 웃긴.*', repl='', string=title_elt.text)
-    title_elt = bs.select('span#ai_cm_title')[0]
-    self.title = re.sub(pattern='<!--[^-]+-->', repl='', string=title_elt.text)
-    print(self.title)
-    self.btn_title.setText(f"{self.title}")
-    
-    refs = []
-    short_url_elt = bs.select('input#short_url')
-    if len(short_url_elt) > 0:
-      refs.append(short_url_elt[0]['value'])
-    
-    #ref_elts = bs.select('div#wrap_cbay_new table a')
-    print(bs.select('div#cnts')[0].find_next_sibling("div"))
-    ref_elts = bs.select('div#cnts')[0].find_next_sibling("div").select("div span a")
-    print(f"ref_elts  = {ref_elts}")
-    for ref_elt in ref_elts:
-      if ref_elt.text:
-        refs.append(ref_elt.text)
-    self.ref = '\n'.join(refs)
-    print(self.ref)
-
-    self.btn_ref.setText(f"{self.ref}")
-    self.adjustSize()
-
     logs = []
-    pic_img_urls = []
-    pic_img_elts = bs.select('#wrap_copy div.simple_attach_img_div img , #wrap_copy table div.comment_img_div img, #wrap_copy div.body_editor img, #wrap_copy div#wrap_img img')
-    #pic_img_elts = bs.select('div#wrap_copy img')
-    print(f"1: {pic_img_elts}")
-    print(f"2: {bs.select('div.simple_attach_img_div')}")
-    
-    
-    ## 2022-07 쯤부터 보이는 패턴 추가
-    for ext_img in bs.select("#wrap_body p span#ai_cm_content p a img"):
-        pic_img_urls.append(get_url(ext_img['src']))
+    if site_name == "humoruniv":
+        #title_elt = bs.select('title')[0]
+        #title = re.sub(pattern=' ?:: 웃긴.*', repl='', string=title_elt.text)
+        title_elt = bs.select('span#ai_cm_title')[0]
+        self.title = re.sub(pattern='<!--[^-]+-->', repl='', string=title_elt.text)
+        print(self.title)
+        self.btn_title.setText(f"{self.title}")
+        
+        refs = []
+        short_url_elt = bs.select('input#short_url')
+        if len(short_url_elt) > 0:
+          refs.append(short_url_elt[0]['value'])
+        
+        #ref_elts = bs.select('div#wrap_cbay_new table a')
+        print(bs.select('div#cnts')[0].find_next_sibling("div"))
+        ref_elts = bs.select('div#cnts')[0].find_next_sibling("div").select("div span a")
+        print(f"ref_elts  = {ref_elts}")
+        for ref_elt in ref_elts:
+          if ref_elt.text:
+            refs.append(ref_elt.text)
+        self.ref = '\n'.join(refs)
+        print(self.ref)
 
+        self.btn_ref.setText(f"{self.ref}")
+        self.adjustSize()
+        
+        pic_img_urls = []
+        pic_img_elts = bs.select('#wrap_copy div.simple_attach_img_div img , #wrap_copy table div.comment_img_div img, #wrap_copy div.body_editor img, #wrap_copy div#wrap_img img')
+        #pic_img_elts = bs.select('div#wrap_copy img')
+        print(f"1: {pic_img_elts}")
+        print(f"2: {bs.select('div.simple_attach_img_div')}")
+        
+        
+        ## 2022-07 쯤부터 보이는 패턴 추가
+        for ext_img in bs.select("#wrap_body p span#ai_cm_content p a img"):
+            pic_img_urls.append(get_url(ext_img['src']))
+
+    else: # ggeal
+        title_elt = bs.select('title')[0]
+        self.title = title_elt.text
+        print(self.title)
+        self.btn_title.setText(f"{self.title}")
+        
+        refs = []
+        short_url_elt = bs.select('div#body_read div.top_area table:nth-child(2) tr td a')
+        if len(short_url_elt) > 0:
+          refs.append(short_url_elt[0]['href'])
+        ref_a_elts = bs.select('div.ct_info_sale div div span a')
+        if len(ref_a_elts) > 0:
+          for ref_a in ref_a_elts:
+            refs.append(ref_a['href'])
+        self.ref = '\n'.join(refs)
+        print(f"refs={refs}")
+        
+        self.btn_ref.setText(f"{self.ref}")
+        self.adjustSize()
+        
+        pic_img_urls = []
+        pic_img_elts = bs.select("div#content_area table div.body_editor div.simple_attach_img_div img")
+        print(f"1: {pic_img_elts}")
+    
     for pic_img_elt in pic_img_elts:
       try:
         print(f"img src candidate = {pic_img_elt['src']}")
@@ -243,15 +290,19 @@ class MyApp(QWidget):
         continue
       elif 'humoruniv.com' in parsed_each_img_url.netloc:
         referer = 'http://web.humoruniv.com/'
+      elif 'fmkorea.com' in parsed_each_img_url.netloc:
+        referer = 'https://www.fmkorea.com/'
       else:
-        referer = f"{parsed_each_img_url} ----> {parsed_each_img_url.scheme}://{parsed_each_img_url.netloc}/"
+        #referer = f"{parsed_each_img_url} ----> {parsed_each_img_url.scheme}://{parsed_each_img_url.netloc}/"
+        referer = parsed_each_img_url.netloc
       #urlretrieve(each_img_url, filename= to_filename )
       print(f"Referer: {referer}")
       headers = {'Referer': referer, 
                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)'
-               + ' Chrome/91.0.4472.114 Safari/537.36'}
+               + ' Chrome/120.0.0.0 Safari/537.36'}
       print(f"image url = {each_img_url}")
-      req = Request(each_img_url, b'{}', headers, method="GET")
+      #req = Request(each_img_url, b'{}', headers, method="GET")
+      req = Request(each_img_url, None, headers, method="GET")
       try:
         data = urlopen(req, timeout=5).read()
       except InvalidURL as e:
@@ -385,6 +436,8 @@ class MyApp(QWidget):
       i = i + 1
       self.textbox_log.append(f'\n saved {dst_filename}')
 
+  def copy_video_attr(self):
+    pyperclip.copy('controls="" style="max-width:100%"')
 
 
 if __name__ == '__main__':
