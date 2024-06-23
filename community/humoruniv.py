@@ -32,7 +32,7 @@ def base_dir():
 
 def get_url(given_url, elt=None):
   if not given_url.startswith("http") :
-    if "//filecache" in given_url and elt is not None:
+    if ("//filecache" in given_url or "//down-webp.humoruniv.com" in given_url) and elt is not None:
       # <img src="http://filecache.humoruniv.com..." OnError="...">
       # print(f"filecached] elt={elt}")
       onerror = re.search("'https?://[^']+'", elt['onerror'])
@@ -52,6 +52,7 @@ def get_url(given_url, elt=None):
       return url
     elif "//down.humoruniv.com/" in given_url:
       return "http:" + given_url
+      elt
     else:
       return None
   if "thumb_crop_resize.php?" in given_url:
@@ -193,6 +194,7 @@ class MyApp(QWidget):
       return
     
     logs = []
+    pic_img_urls = []
     if site_name == "humoruniv":
         #title_elt = bs.select('title')[0]
         #title = re.sub(pattern=' ?:: 웃긴.*', repl='', string=title_elt.text)
@@ -217,9 +219,9 @@ class MyApp(QWidget):
         print(self.ref)
 
         self.btn_ref.setText(f"{self.ref}")
+        self.btn_ref.adjustSize()
         self.adjustSize()
         
-        pic_img_urls = []
         pic_img_elts = bs.select('#wrap_copy div.simple_attach_img_div img , #wrap_copy table div.comment_img_div img, #wrap_copy div.body_editor img, #wrap_copy div#wrap_img img')
         #pic_img_elts = bs.select('div#wrap_copy img')
         print(f"1: {pic_img_elts}")
@@ -248,10 +250,10 @@ class MyApp(QWidget):
         print(f"refs={refs}")
         
         self.btn_ref.setText(f"{self.ref}")
+        self.btn_ref.adjustSize()
         self.adjustSize()
         
-        pic_img_urls = []
-        pic_img_elts = bs.select("div#content_area table div.body_editor div.simple_attach_img_div img")
+        pic_img_elts = bs.select("div#content_area table div.body_editor img")
         print(f"1: {pic_img_elts}")
     
     for pic_img_elt in pic_img_elts:
@@ -437,14 +439,30 @@ class MyApp(QWidget):
       self.textbox_log.append(f'\n saved {dst_filename}')
 
   def copy_video_attr(self):
-    pyperclip.copy('controls="" style="max-width:100%"')
+      current_text = pyperclip.paste().strip()
+      print(current_text)
+      video_attr= 'controls="" style="max-width:100%"'
+      if not current_text:
+          pyperclip.copy(video_attr)
+      elif re.match("http.*\.mp4(\?.*)?", current_text):
+              pyperclip.copy(f'<video {video_attr}><source src="{current_text}"/></video>')
+      else:
+          m = re.match('<video ([^>]*)(>.*</video>)', current_text, re.DOTALL)
+          if m:
+              m2 = re.match('.*(src="[^"]+").*', m.group(1))
+              if m2:
+                  pyperclip.copy(f'<video {video_attr} {m2.group(1)} {m.group(2)}')
+              else:
+                  pyperclip.copy(f'<video {video_attr}{m.group(2)}')
+          else:
+              pyperclip.copy(video_attr)
 
 
 if __name__ == '__main__':
-  app = QApplication(sys.argv)
-  ex = MyApp()
-  # test
-  #import pathlib
-  #path = pathlib.Path(__file__).parent / "mp4.py"
-  #print(path)
-  sys.exit(app.exec_())
+    app = QApplication(sys.argv)
+    ex = MyApp()
+    # test
+    #import pathlib
+    #path = pathlib.Path(__file__).parent / "mp4.py"
+    #print(path)
+    sys.exit(app.exec_())
