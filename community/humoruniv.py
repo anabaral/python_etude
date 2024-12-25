@@ -52,7 +52,8 @@ def get_url(given_url, elt=None):
       return url
     elif "//down.humoruniv.com/" in given_url:
       return "http:" + given_url
-      elt
+    elif given_url.startswith("/dvs"):  # dogdrip
+      return "https://dogdrip.net" + given_url
     else:
       return None
   if "thumb_crop_resize.php?" in given_url:
@@ -157,6 +158,8 @@ class MyApp(QWidget):
         site_name="humoruniv"
     elif "ggeal" in base_url:
         site_name="ggeal"
+    elif "dogdrip" in base_url:
+        site_name="dogdrip"
     
     if not validators.url(base_url):
       self.btn_apply.setText('Apply URL: URL이 좀 이상함. 카피한 거 확인해봐요?')
@@ -220,7 +223,7 @@ class MyApp(QWidget):
 
         self.btn_ref.setText(f"{self.ref}")
         self.btn_ref.adjustSize()
-        self.adjustSize()
+        #self.adjustSize()
         
         pic_img_elts = bs.select('#wrap_copy div.simple_attach_img_div img , #wrap_copy table div.comment_img_div img, #wrap_copy div.body_editor img, #wrap_copy div#wrap_img img')
         #pic_img_elts = bs.select('div#wrap_copy img')
@@ -232,7 +235,7 @@ class MyApp(QWidget):
         for ext_img in bs.select("#wrap_body p span#ai_cm_content p a img"):
             pic_img_urls.append(get_url(ext_img['src']))
 
-    else: # ggeal
+    elif site_name == "ggeal": # ggeal
         title_elt = bs.select('title')[0]
         self.title = title_elt.text
         print(self.title)
@@ -255,6 +258,18 @@ class MyApp(QWidget):
         
         pic_img_elts = bs.select("div#content_area table div.body_editor img")
         print(f"1: {pic_img_elts}")
+    else: # dogdrip
+        title_elt = bs.select('title')[0]
+        self.title = title_elt.text.replace(" - DogDrip.Net 개드립", "")
+        print(self.title)
+        self.btn_title.setText(f"{self.title}")
+        refs = []
+        dogdrip_url = bs.find("meta", {"property":"og:url"})
+        if dogdrip_url:
+            print(dogdrip_url['content'])
+            refs.append(dogdrip_url['content'])
+        pic_img_elts = bs.select("#article_1 img")
+        
     
     for pic_img_elt in pic_img_elts:
       try:
@@ -294,6 +309,8 @@ class MyApp(QWidget):
         referer = 'http://web.humoruniv.com/'
       elif 'fmkorea.com' in parsed_each_img_url.netloc:
         referer = 'https://www.fmkorea.com/'
+      elif 'dogdrip.net' in parsed_each_img_url.netloc:
+        referer = 'https://dogdrip.net/'
       else:
         #referer = f"{parsed_each_img_url} ----> {parsed_each_img_url.scheme}://{parsed_each_img_url.netloc}/"
         referer = parsed_each_img_url.netloc
@@ -361,6 +378,7 @@ class MyApp(QWidget):
         data = None
         
     self.textbox_log.setText('\n'.join(logs))
+    self.adjustSize()
     #if webp_exists:
     #  import os
     #  print('webp2jpg.bat')
