@@ -392,6 +392,8 @@ class MyApp(QWidget):
 
   def copy_to_00png(self, scale):
     im = ImageGrab.grabclipboard()
+    if im.getpixel((0, im.height - 1)) == (0,0,0,0):
+        im = im.crop((0,0,im.width - 1, im.height - 2))
     if im is None:
       self.btn_apply.setText('Apply URL: 뭔가 잘못 카피한 거 아님?')
       return
