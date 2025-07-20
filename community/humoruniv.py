@@ -392,11 +392,12 @@ class MyApp(QWidget):
 
   def copy_to_00png(self, scale):
     im = ImageGrab.grabclipboard()
-    if im.getpixel((0, im.height - 1)) == (0,0,0,0):
-        im = im.crop((0,0,im.width - 1, im.height - 2))
     if im is None:
       self.btn_apply.setText('Apply URL: 뭔가 잘못 카피한 거 아님?')
       return
+    while im.getpixel((0, im.height - 1))[3] == 0:
+        # print(f"cropping {im.width}x{im.height} to {im.width}x{im.height-1}")
+        im = im.crop((0,0,im.width, im.height - 1))
     if self.overwrite_chk.isChecked():
       save_filename = '00.png'
     else:
